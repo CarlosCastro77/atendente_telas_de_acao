@@ -605,15 +605,21 @@ export async function getHistoryPatientsList(searchTerm: string) {
         {
           $addFields: {
             statusDescricao: {
-              $switch: {
-                branches: [
-                  { case: { $eq: ["$statusId", 5842086935003136] }, then: "Confirmado" },
-                  { case: { $eq: ["$statusId", 5988773355716608] }, then: "Atendido" },
-                  { case: { $eq: ["$statusId", 4862873448873980] }, then: "Faltou" },
-                  { case: { $eq: ["$statusId", 0] }, then: "Sem Status" },
-                ],
-                default: "Outro",
-              },
+              $ifNull: [
+                "$statusDescription",
+                {
+                  $switch: {
+                    branches: [
+                      { case: { $eq: ["$statusId", 5842086935003136] }, then: "Confirmado" },
+                      { case: { $eq: ["$statusId", 5988773355716608] }, then: "Atendido" },
+                      { case: { $eq: ["$statusId", 4862873448873980] }, then: "Faltou" },
+                      { case: { $eq: ["$statusId", 4862873448873984] }, then: "Faltou" },
+                      { case: { $eq: ["$statusId", 0] }, then: "Sem Status" },
+                    ],
+                    default: "Sem Status",
+                  },
+                },
+              ],
             },
             dataFormatada: { $dateToString: { format: "%d/%m/%Y", date: "$date" } },
           },
@@ -674,15 +680,21 @@ export async function getPatientHistory(patientName: string) {
         {
           $addFields: {
             statusDescricao: {
-              $switch: {
-                branches: [
-                  { case: { $eq: ["$statusId", 5842086935003136] }, then: "Confirmado" },
-                  { case: { $eq: ["$statusId", 5988773355716608] }, then: "Atendido" },
-                  { case: { $eq: ["$statusId", 4862873448873980] }, then: "Faltou" },
-                  { case: { $eq: ["$statusId", 0] }, then: "Sem Status" },
-                ],
-                default: "Outro",
-              },
+              $ifNull: [
+                "$statusDescription",
+                {
+                  $switch: {
+                    branches: [
+                      { case: { $eq: ["$statusId", 5842086935003136] }, then: "Confirmado" },
+                      { case: { $eq: ["$statusId", 5988773355716608] }, then: "Atendido" },
+                      { case: { $eq: ["$statusId", 4862873448873980] }, then: "Faltou" },
+                      { case: { $eq: ["$statusId", 4862873448873984] }, then: "Faltou" },
+                      { case: { $eq: ["$statusId", 0] }, then: "Sem Status" },
+                    ],
+                    default: "Sem Status",
+                  },
+                },
+              ],
             },
             dataFormatada: { $dateToString: { format: "%d/%m/%Y", date: "$date" } },
           },

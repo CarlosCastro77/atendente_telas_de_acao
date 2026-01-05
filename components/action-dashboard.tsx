@@ -500,14 +500,14 @@ export function ActionDashboard() {
               />
             </header>
 
-            <div className="flex-1 p-8 overflow-hidden">
-              <div className="grid grid-cols-[320px,1fr] gap-6 h-full">
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+            <div className="flex-1 p-8 overflow-hidden min-h-0">
+              <div className="grid grid-cols-[320px,1fr] gap-6 h-full min-h-0">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-0">
                   <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Pacientes</span>
                     {isLoadingHistoryPatients && <Loader2 className="w-4 h-4 animate-spin text-[#F56E38]" />}
                   </div>
-                  <ScrollArea className="flex-1">
+                  <ScrollArea className="flex-1 min-h-0">
                     <div className="divide-y divide-gray-50">
                       {historyPatients.length === 0 && !isLoadingHistoryPatients ? (
                         <div className="p-4 text-sm text-gray-500">Nenhum paciente encontrado.</div>
