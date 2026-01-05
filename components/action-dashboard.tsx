@@ -23,26 +23,27 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { CSVExportDialog } from "@/components/csv-export-dialog" // Importado novo diálogo de exportação
-import { getPatients, getPatientHistory, type Patient } from "@/app/actions/patients"
+import {
+  getHistoryPatientsList,
+  getPatientHistory,
+  getPatients,
+  type HistoryItem,
+  type HistoryPatient,
+  type Patient,
+} from "@/app/actions/patients"
 
 type ActionType = "nps" | "noshow" | "confirmation" | "mesotherapy"
-type HistoryRecord = {
-  id: string
-  date: string
-  time: string
-  professional: string
-  procedure: string
-  obs: string
-  markers: string
-  status: string
-}
+type HistoryRecord = HistoryItem
 
 export function ActionDashboard() {
   const [selectedAction, setSelectedAction] = React.useState<ActionType>("nps")
   const [patientsList, setPatientsList] = React.useState<Patient[]>([])
   const [historyList, setHistoryList] = React.useState<HistoryRecord[]>([])
+  const [historyPatients, setHistoryPatients] = React.useState<HistoryPatient[]>([])
+  const [selectedHistoryPatient, setSelectedHistoryPatient] = React.useState<HistoryPatient | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [isLoadingHistory, setIsLoadingHistory] = React.useState(false)
+  const [isLoadingHistoryPatients, setIsLoadingHistoryPatients] = React.useState(false)
   const [view, setView] = React.useState<"dashboard" | "history">("dashboard")
   const [searchTerm, setSearchTerm] = React.useState("")
   const [tableFilter, setTableFilter] = React.useState("")
@@ -70,25 +71,44 @@ export function ActionDashboard() {
   }
 
   React.useEffect(() => {
-    async function loadHistory() {
-      if (view === "history" && searchTerm.length > 2) {
-        setIsLoadingHistory(true)
-        try {
-          const data = await getPatientHistory(searchTerm)
-          // Mapear campos do banco para o formato da interface se necessário
-          setHistoryList(data as any)
-        } catch (error) {
-          console.error("[v0] Erro ao carregar histórico:", error)
-        } finally {
-          setIsLoadingHistory(false)
+    async function loadHistoryPatients() {
+      if (view !== "history") return
+      setIsLoadingHistoryPatients(true)
+      try {
+        const data = await getHistoryPatientsList(searchTerm)
+        setHistoryPatients(data)
+        if (data.length === 0) {
+          setSelectedHistoryPatient(null)
+          setHistoryList([])
         }
-      } else {
-        setHistoryList([])
+      } catch (error) {
+        console.error("[v0] Erro ao carregar pacientes do histórico:", error)
+      } finally {
+        setIsLoadingHistoryPatients(false)
       }
     }
-    const debounceTimer = setTimeout(loadHistory, 500)
+    const debounceTimer = setTimeout(loadHistoryPatients, 400)
     return () => clearTimeout(debounceTimer)
   }, [searchTerm, view])
+
+  React.useEffect(() => {
+    async function loadHistoryDetails() {
+      if (view !== "history" || !selectedHistoryPatient) {
+        setHistoryList([])
+        return
+      }
+      setIsLoadingHistory(true)
+      try {
+        const data = await getPatientHistory(selectedHistoryPatient.name)
+        setHistoryList(data as any)
+      } catch (error) {
+        console.error("[v0] Erro ao carregar histórico detalhado:", error)
+      } finally {
+        setIsLoadingHistory(false)
+      }
+    }
+    loadHistoryDetails()
+  }, [selectedHistoryPatient, view])
 
   const getExportColumns = (type: ActionType) => {
     switch (type) {
@@ -224,7 +244,11 @@ export function ActionDashboard() {
                 icon={<History className="w-4 h-4" />}
                 label="Busca de Histórico"
                 active={view === "history"}
-                onClick={() => setView("history")}
+                onClick={() => {
+                  setView("history")
+                  setSelectedHistoryPatient(null)
+                  setHistoryList([])
+                }}
               />
             </div>
           </div>
@@ -446,6 +470,8 @@ export function ActionDashboard() {
                   onClick={() => {
                     setView("dashboard")
                     setSearchTerm("")
+                    setSelectedHistoryPatient(null)
+                    setHistoryList([])
                   }}
                   className="rounded-full hover:bg-gray-100"
                 >
@@ -465,86 +491,136 @@ export function ActionDashboard() {
                 data={historyList}
                 columns={[
                   { id: "date", label: "Data" },
-                  { id: "time", label: "Horário" },
-                  { id: "professional", label: "Profissional" },
-                  { id: "procedure", label: "Procedimentos" },
-                  { id: "obs", label: "Obs" },
-                  { id: "markers", label: "Marcadores" },
+                  { id: "category", label: "Categoria" },
                   { id: "status", label: "Status" },
+                  { id: "type", label: "Tipo" },
+                  { id: "phone", label: "Telefone" },
                 ]}
                 filename="historico-paciente.csv"
               />
             </header>
 
-            <div className="flex-1 p-8 overflow-auto">
-              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-gray-50">
-                      <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-gray-400">Data</th>
-                      <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                        Horário
-                      </th>
-                      <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                        Profissional
-                      </th>
-                      <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                        Procedimentos
-                      </th>
-                      <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-gray-400">Obs</th>
-                      <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                        Marcadores
-                      </th>
-                      <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
+            <div className="flex-1 p-8 overflow-hidden">
+              <div className="grid grid-cols-[320px,1fr] gap-6 h-full">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Pacientes</span>
+                    {isLoadingHistoryPatients && <Loader2 className="w-4 h-4 animate-spin text-[#F56E38]" />}
+                  </div>
+                  <ScrollArea className="flex-1">
+                    <div className="divide-y divide-gray-50">
+                      {historyPatients.length === 0 && !isLoadingHistoryPatients ? (
+                        <div className="p-4 text-sm text-gray-500">Nenhum paciente encontrado.</div>
+                      ) : (
+                        historyPatients.map((patient) => {
+                          const isActive = selectedHistoryPatient?.name === patient.name
+                          return (
+                            <button
+                              key={patient.name}
+                              className={cn(
+                                "w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors",
+                                isActive && "bg-orange-50/70",
+                              )}
+                              onClick={() => setSelectedHistoryPatient(patient)}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-[#333] truncate">{patient.name}</p>
+                                  {patient.phone && (
+                                    <p className="text-xs text-gray-500 truncate">{patient.phone}</p>
+                                  )}
+                                </div>
+                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px] border-none bg-gray-100">
+                                  {patient.lastStatus || "-"}
+                                </Badge>
+                              </div>
+                              <div className="mt-1 text-[11px] text-gray-500 flex items-center gap-3">
+                                <span>{patient.lastDate || ""}</span>
+                                <span className="truncate">{patient.lastCategory || ""}</span>
+                              </div>
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[#333]">
+                        {selectedHistoryPatient ? selectedHistoryPatient.name : "Selecione um paciente"}
+                      </p>
+                      {selectedHistoryPatient?.phone && (
+                        <p className="text-xs text-gray-500">{selectedHistoryPatient.phone}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-auto">
                     {isLoadingHistory ? (
-                      <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
+                      <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3 py-10">
                         <Loader2 className="w-8 h-8 animate-spin text-[#F56E38]" />
                         <p className="text-sm font-medium">Carregando histórico...</p>
                       </div>
+                    ) : !selectedHistoryPatient ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-2 py-10">
+                        <p className="text-sm">Escolha um paciente para ver o histórico.</p>
+                      </div>
                     ) : historyList.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-2">
-                        <p className="text-sm">Nenhum registro encontrado no histórico.</p>
+                      <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-2 py-10">
+                        <p className="text-sm">Nenhum registro encontrado para este paciente.</p>
                       </div>
                     ) : (
-                      historyList.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-6 py-4 text-sm text-gray-600 font-medium">{item.date}</td>
-                          <td className="px-6 py-4 text-sm text-gray-500">{item.time}</td>
-                          <td className="px-6 py-4 text-sm font-medium text-[#333]">{item.professional}</td>
-                          <td className="px-6 py-4 text-sm text-gray-600">{item.procedure}</td>
-                          <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{item.obs}</td>
-                          <td className="px-6 py-4 text-sm text-gray-500">{item.markers}</td>
-                          <td className="px-6 py-4">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "rounded-full px-3 py-0.5 font-medium text-[11px] border-none",
-                                item.status.includes("Atendido")
-                                  ? "bg-green-50 text-green-700"
-                                  : "bg-blue-50 text-blue-700",
-                              )}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <span
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-gray-50">
+                            <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400">Data</th>
+                            <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400">Categoria</th>
+                            <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400">Status</th>
+                            <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400">Tipo</th>
+                            <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400">Telefone</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {historyList.map((item) => (
+                            <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-6 py-3 text-sm text-gray-600 font-medium whitespace-nowrap">{item.date}</td>
+                              <td className="px-6 py-3 text-sm text-gray-600">{item.category}</td>
+                              <td className="px-6 py-3">
+                                <Badge
+                                  variant="outline"
                                   className={cn(
-                                    "w-1.5 h-1.5 rounded-full",
-                                    item.status.includes("Atendido") ? "bg-green-500" : "bg-blue-400",
+                                    "rounded-full px-3 py-0.5 font-medium text-[11px] border-none",
+                                    item.status.includes("Atendido")
+                                      ? "bg-green-50 text-green-700"
+                                      : "bg-blue-50 text-blue-700",
                                   )}
-                                />
-                                {item.status}
-                              </span>
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <span
+                                      className={cn(
+                                        "w-1.5 h-1.5 rounded-full",
+                                        item.status.includes("Atendido") ? "bg-green-500" : "bg-blue-400",
+                                      )}
+                                    />
+                                    {item.status}
+                                  </span>
+                                </Badge>
+                              </td>
+                              <td className="px-6 py-3 text-sm text-gray-600">
+                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px] border-none bg-gray-100">
+                                  {item.type === "estimate" ? "Estimate" : "Appointment"}
+                                </Badge>
+                              </td>
+                              <td className="px-6 py-3 text-sm text-gray-500 whitespace-nowrap">{item.phone || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     )}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

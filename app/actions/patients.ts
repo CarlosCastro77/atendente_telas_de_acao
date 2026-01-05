@@ -23,6 +23,26 @@ const PatientSchema = z.object({
 
 export type Patient = z.infer<typeof PatientSchema>
 
+export type HistoryPatient = {
+  name: string
+  phone?: string
+  lastDate?: string
+  lastStatus?: string
+  lastCategory?: string
+  atomicDate?: number
+}
+
+export type HistoryItem = {
+  id: string
+  type: "appointment" | "estimate"
+  date: string
+  status: string
+  category: string
+  phone?: string
+  source?: string
+  atomicDate?: number
+}
+
 export async function getPatients() {
   try {
     if (!process.env.MONGODB_URI) {
@@ -562,19 +582,138 @@ export async function getPatients() {
   }
 }
 
+export async function getHistoryPatientsList(searchTerm: string) {
+  try {
+    if (!process.env.MONGODB_URI) return []
+
+    const client = await clientPromise
+    const db = client.db()
+    const appointmentCollection = db.collection("appointment")
+
+    const matchStage = searchTerm
+      ? {
+          $match: {
+            patientName: { $regex: searchTerm, $options: "i" },
+          },
+        }
+      : { $match: {} }
+
+    const data = await appointmentCollection
+      .aggregate([
+        { $sort: { atomicDate: -1 } as any },
+        { $limit: 1000 },
+        {
+          $addFields: {
+            statusDescricao: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ["$statusId", 5842086935003136] }, then: "Confirmado" },
+                  { case: { $eq: ["$statusId", 5988773355716608] }, then: "Atendido" },
+                  { case: { $eq: ["$statusId", 4862873448873980] }, then: "Faltou" },
+                  { case: { $eq: ["$statusId", 0] }, then: "Sem Status" },
+                ],
+                default: "Outro",
+              },
+            },
+            dataFormatada: { $dateToString: { format: "%d/%m/%Y", date: "$date" } },
+          },
+        },
+        matchStage,
+        {
+          $project: {
+            _id: 0,
+            patientName: 1,
+            mobilePhone: 1,
+            atomicDate: 1,
+            date: "$dataFormatada",
+            statusDescricao: 1,
+            categoryDescription: 1,
+          },
+        },
+        {
+          $group: {
+            _id: "$patientName",
+            name: { $first: "$patientName" },
+            phone: { $first: "$mobilePhone" },
+            lastDate: { $first: "$date" },
+            lastStatus: { $first: "$statusDescricao" },
+            lastCategory: { $first: "$categoryDescription" },
+            atomicDate: { $first: "$atomicDate" },
+          },
+        },
+        { $sort: { atomicDate: -1 } as any },
+      ])
+      .toArray()
+
+    return data.map((item: any) => ({
+      name: item.name ?? item._id ?? "",
+      phone: item.phone ?? "",
+      lastDate: item.lastDate ?? "",
+      lastStatus: item.lastStatus ?? "",
+      lastCategory: item.lastCategory ?? "",
+      atomicDate: item.atomicDate ?? 0,
+    })) as HistoryPatient[]
+  } catch (e) {
+    console.error("[v0] Erro ao buscar pacientes do histórico:", e)
+    return []
+  }
+}
+
 export async function getPatientHistory(patientName: string) {
   try {
     if (!process.env.MONGODB_URI) return getMockHistory()
 
     const client = await clientPromise
     const db = client.db()
+    const appointmentCollection = db.collection("appointment")
 
-    const history = await db.collection("history").find({ patientName: patientName }).sort({ date: -1 }).toArray()
+    const appointments = await appointmentCollection
+      .aggregate([
+        { $match: { patientName } },
+        { $sort: { atomicDate: -1 } as any },
+        {
+          $addFields: {
+            statusDescricao: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ["$statusId", 5842086935003136] }, then: "Confirmado" },
+                  { case: { $eq: ["$statusId", 5988773355716608] }, then: "Atendido" },
+                  { case: { $eq: ["$statusId", 4862873448873980] }, then: "Faltou" },
+                  { case: { $eq: ["$statusId", 0] }, then: "Sem Status" },
+                ],
+                default: "Outro",
+              },
+            },
+            dataFormatada: { $dateToString: { format: "%d/%m/%Y", date: "$date" } },
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            atomicDate: 1,
+            date: "$dataFormatada",
+            status: "$statusDescricao",
+            category: "$categoryDescription",
+            phone: "$mobilePhone",
+            type: { $literal: "appointment" },
+          },
+        },
+      ])
+      .toArray()
 
-    return history.map((h: any) => ({
-      ...h,
-      _id: h._id.toString(),
+    const mappedAppointments: HistoryItem[] = appointments.map((h: any) => ({
+      id: h._id?.toString() ?? Math.random().toString(),
+      type: "appointment",
+      date: h.date ?? "",
+      status: h.status ?? "",
+      category: h.category ?? "",
+      phone: h.phone ?? "",
+      atomicDate: h.atomicDate ?? 0,
     }))
+
+    const estimates = await fetchEstimatesForPatient(db, patientName)
+
+    return [...mappedAppointments, ...estimates].sort((a, b) => (b.atomicDate ?? 0) - (a.atomicDate ?? 0))
   } catch (e) {
     console.error("[v0] Erro ao buscar histórico no MongoDB:", e)
     return getMockHistory()
@@ -646,27 +785,62 @@ function getMockPatients(): Patient[] {
   ]
 }
 
-function getMockHistory() {
+async function fetchEstimatesForPatient(db: any, patientName: string): Promise<HistoryItem[]> {
+  try {
+    const estimateCollection = db.collection("estimate")
+    const estimates = await estimateCollection.find({ patientName }).sort({ atomicDate: -1 }).limit(1000).toArray()
+
+    return estimates.map((e: any) => ({
+      id: e._id?.toString() ?? Math.random().toString(),
+      type: "estimate" as const,
+      date: formatDateSafe(e.date),
+      status: e.statusDescricao ?? e.status ?? "Estimate",
+      category: e.categoryDescription ?? e.title ?? "Orçamento",
+      phone: e.mobilePhone ?? "",
+      atomicDate: typeof e.atomicDate === "number" ? e.atomicDate : Number(e.atomicDate) || 0,
+      source: "estimate",
+    }))
+  } catch (e) {
+    console.warn("[v0] Coleção de estimates ausente ou erro ao buscar:", e)
+    return []
+  }
+}
+
+function formatDateSafe(value: any) {
+  if (!value) return ""
+  try {
+    const d = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(d.getTime())) return ""
+    const day = d.getDate().toString().padStart(2, "0")
+    const month = (d.getMonth() + 1).toString().padStart(2, "0")
+    const year = d.getFullYear()
+    return `${day}/${month}/${year}`
+  } catch {
+    return ""
+  }
+}
+
+function getMockHistory(): HistoryItem[] {
   return [
     {
       id: "h1",
+      type: "appointment",
       date: "30/01/2026",
-      time: "8:30 até 9:00",
-      professional: "Renata Thais Monteiro do Nascimento",
-      procedure: "Mesoterapia de manutenção",
-      obs: "Fazer pagamento antes",
-      markers: "",
-      status: "Agendado",
+      status: "Atendido",
+      category: "Mesoterapia de manutenção",
+      phone: "+5586981819999",
+      atomicDate: 20260130,
+      source: "appointment",
     },
     {
       id: "h2",
+      type: "estimate",
       date: "19/12/2025",
-      time: "9:00 até 9:30",
-      professional: "Lucas Inácio Araújo Cabral",
-      procedure: "Retorno",
-      obs: "Retorno após encerramento das mesoterapias",
-      markers: "",
-      status: "4-Atendido",
+      status: "Orçamento",
+      category: "Retorno",
+      phone: "+5586994551234",
+      atomicDate: 20251219,
+      source: "estimate",
     },
   ]
 }
