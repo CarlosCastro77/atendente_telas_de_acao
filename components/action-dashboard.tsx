@@ -36,6 +36,15 @@ type ActionType = "nps" | "noshow" | "confirmation" | "mesotherapy"
 type HistoryRecord = HistoryItem
 
 export function ActionDashboard() {
+  const statusStyles = React.useCallback((status: string | undefined) => {
+    const s = (status || "").toLowerCase()
+    if (s.includes("atendido")) return { badge: "bg-green-50 text-green-700 border border-green-200", dot: "bg-green-500" }
+    if (s.includes("confirmado")) return { badge: "bg-blue-50 text-blue-700 border border-blue-200", dot: "bg-blue-400" }
+    if (s.includes("faltou") || s.includes("no-show")) return { badge: "bg-red-50 text-red-700 border border-red-200", dot: "bg-red-500" }
+    if (s.includes("sem status")) return { badge: "bg-gray-100 text-gray-600 border border-gray-200", dot: "bg-gray-400" }
+    return { badge: "bg-gray-100 text-gray-700 border border-gray-200", dot: "bg-gray-500" }
+  }, [])
+
   const [selectedAction, setSelectedAction] = React.useState<ActionType>("nps")
   const [patientsList, setPatientsList] = React.useState<Patient[]>([])
   const [historyList, setHistoryList] = React.useState<HistoryRecord[]>([])
@@ -530,7 +539,13 @@ export function ActionDashboard() {
                                     <p className="text-xs text-gray-500 truncate">{patient.phone}</p>
                                   )}
                                 </div>
-                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px] border-none bg-gray-100">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "rounded-full px-2 py-0.5 text-[11px] border-none",
+                                    statusStyles(patient.lastStatus).badge,
+                                  )}
+                                >
                                   {patient.lastStatus || "-"}
                                 </Badge>
                               </div>
@@ -592,17 +607,12 @@ export function ActionDashboard() {
                                   variant="outline"
                                   className={cn(
                                     "rounded-full px-3 py-0.5 font-medium text-[11px] border-none",
-                                    item.status.includes("Atendido")
-                                      ? "bg-green-50 text-green-700"
-                                      : "bg-blue-50 text-blue-700",
+                                    statusStyles(item.status).badge,
                                   )}
                                 >
                                   <span className="flex items-center gap-1.5">
                                     <span
-                                      className={cn(
-                                        "w-1.5 h-1.5 rounded-full",
-                                        item.status.includes("Atendido") ? "bg-green-500" : "bg-blue-400",
-                                      )}
+                                      className={cn("w-1.5 h-1.5 rounded-full", statusStyles(item.status).dot)}
                                     />
                                     {item.status}
                                   </span>
